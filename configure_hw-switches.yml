@@ -1,0 +1,48 @@
+---
+- name: Konfiguriere Lid Switch und Power-Button
+  vars:
+    target_group: "{{ target_group | default('INFacerWLAN') }}"
+    backup_dir: "backup/{{ inventory_hostname }}"
+    timestamp: "{{ ansible_date_time.iso8601 }}"
+    udev_rule_path: "/etc/udev/rules.d/99-lid-power.rules"
+  hosts: "{{ target_group }}"
+  remote_user: root
+  tasks:
+  - name: Konfiguriere systemd (logind.conf)
+    lineinfile:
+      path: /etc/systemd/logind.conf
+      line: "{{ item }}"
+      state: present
+    loop:
+      - HandleLidSwitch=poweroff
+      - HandlePowerKey=poweroff
+    ignore_errors: no
+
+  - name: Maskiere systemd-Dienste (systemd-logind.service)
+    systemd:
+      name: systemd-logind.service
+      state: masked
+    ignore_errors: no
+
+  - name: Konfiguriere udev-Regeln
+    copy:
+      content: "ACTION==\"change\", SUBSYSTEM==\"power\", RUN+=\"/bin/sh -c 'echo poweroff > /sys/power/state'\""
+      dest: "{{ udev_rule_path }}"
+      mode: '0644'
+    ignore_errors: no
+
+  - name: Deaktiviere Power-Management-Dienste
+    systemd:
+      name: "{{ item }}"
+      state: disabled
+    loop: "{{ query('shell', 'systemctl list-units --type=service | grep -i power') }}"
+    ignore_errors: no
+
+  - name: Neustart
+    reboot:
+      msg: "Neustart erforderlich"
+      connect_timeout: 5
+      reboot_timeout: 300
+      pre_reboot_delay: 0
+      post_reboot_delay: 60
+
