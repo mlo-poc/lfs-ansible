@@ -18,11 +18,18 @@
       - HandlePowerKey=poweroff
     ignore_errors: no
 
-  - name: Maskiere systemd-Dienste (systemd-logind.service)
-    systemd:
-      name: systemd-logind.service
-      state: masked
-    ignore_errors: no
+  - name: Ensure systemd-logind.service is masked (symlink to /dev/null)
+    become: yes
+    file:
+      path: /etc/systemd/system/systemd-logind.service
+      state: link
+      src: /dev/null
+
+  - name: Reload systemd daemon
+    become: yes
+    command: systemctl daemon-reload
+    changed_when: false
+
 
   - name: Konfiguriere udev-Regeln
     copy:
@@ -31,12 +38,11 @@
       mode: '0644'
     ignore_errors: no
 
-  - name: Deaktiviere Power-Management-Dienste
-    systemd:
-      name: "{{ item }}"
-      state: disabled
-    loop: "{{ query('shell', 'systemctl list-units --type=service | grep -i power') }}"
-    ignore_errors: no
+  - name: Liste Power-bezogene Dienste auf Zielhost
+    become: yes
+    command: systemctl list-units --type=service --no-legend
+    register: svc_list
+    changed_when: false
 
   - name: Neustart
     reboot:
