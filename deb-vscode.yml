@@ -1,0 +1,69 @@
+---
+- name: Install Visual Studio Code
+  vars:
+    target_group: "{{ target_group | default('INFacerWLAN') }}"
+  hosts: "{{ target_group }}"
+  remote_user: root
+  tasks:
+    - name: Akzeptiere Repository-Änderungen
+      command: apt-get update --allow-releaseinfo-change
+      changed_when: false
+      failed_when: false
+
+    - name: Prüfe ob VS Code installiert ist
+      command: dpkg-query -W code
+      register: vscode_check
+      failed_when: false
+      changed_when: false
+
+    - name: Installiere Abhängigkeiten
+      apt:
+        name:
+          - wget
+          - ca-certificates
+        state: present
+        update_cache: yes
+      when: vscode_check.rc != 0
+
+    - name: Lade VS Code DEB-Datei herunter
+      get_url:
+        url: https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64
+        dest: /tmp/vscode.deb
+        mode: '0644'
+      when: vscode_check.rc != 0
+
+    - name: Installiere VS Code
+      apt:
+        deb: /tmp/vscode.deb
+        state: present
+      when: vscode_check.rc != 0
+
+    - name: Entferne DEB-Datei
+      file:
+        path: /tmp/vscode.deb
+        state: absent
+      when: vscode_check.rc != 0
+
+    - name: Erstelle systemweites Extensions-Verzeichnis
+      file:
+        path: /opt/vscode-extensions
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+
+    - name: Installiere Python Extension ins systemweite Verzeichnis
+      command: code --extensions-dir /opt/vscode-extensions --install-extension ms-python.python --force
+      environment:
+        HOME: /root
+      changed_when: false
+
+    - name: Erstelle code-Wrapper für systemweite Extensions
+      copy:
+        dest: /usr/local/bin/code
+        content: |
+          #!/bin/bash
+          exec /usr/bin/code --extensions-dir /opt/vscode-extensions "$@"
+        mode: '0755'
+        owner: root
+        group: root
