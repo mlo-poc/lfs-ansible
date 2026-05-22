@@ -1,0 +1,131 @@
+---
+# check-pip-venv.yml – Prüft und repariert die pip-/venv-Installation
+#
+# Hintergrund:
+#   Auf manchen Geräten schlägt "python3 -m venv mein_venv" fehl, weil das
+#   Bootstrapping von pip (ensurepip) defekt ist. Als Workaround funktioniert
+#   "python3 -m venv --without-pip mein_venv" – das ist aber keine Lösung.
+#
+# Ablauf:
+#   1. Diagnose: Test-venv MIT pip anlegen und Fehler erfassen.
+#   2. Reparatur (nur bei Defekt): venv-/pip-Pakete neu installieren.
+#   3. Erneute Prüfung und Zusammenfassung.
+#
+# Verwendung:
+#   ansible-playbook check-pip-venv.yml
+#   ansible-playbook check-pip-venv.yml -e target_group=INFacerLAN
+#   ansible-playbook check-pip-venv.yml -e "target_group=INFacerLAN repair=false"
+
+- name: pip-/venv-Installation prüfen und reparieren
+  vars:
+    do_repair: "{{ repair | default(true) | bool }}"
+    venv_dir:  /tmp/pip_venv_check
+
+  hosts: "{{ target_group | default('INFacerWLAN') }}"
+  remote_user: root
+  gather_facts: yes
+
+  tasks:
+    # ── Aufräumen vorab ───────────────────────────────────────
+    - name: Eventuell vorhandenes Test-venv entfernen
+      file:
+        path: "{{ venv_dir }}"
+        state: absent
+
+    # ── 1. Diagnose ───────────────────────────────────────────
+    - name: Test-venv MIT pip anlegen (Diagnose)
+      command: "python3 -m venv {{ venv_dir }}"
+      register: venv_before
+      changed_when: false
+      ignore_errors: true
+
+    - name: Diagnose-Ergebnis merken
+      set_fact:
+        pip_ok_before: "{{ venv_before.rc == 0 }}"
+
+    - name: Test-venv nach Diagnose entfernen
+      file:
+        path: "{{ venv_dir }}"
+        state: absent
+
+    - name: Diagnose-Fehlermeldung anzeigen
+      debug:
+        msg: >-
+          {{ inventory_hostname }}: venv-Erstellung FEHLGESCHLAGEN –
+          {{ venv_before.stderr | default('') | trim }}
+      when: not pip_ok_before
+
+    # ── 2. Reparatur (nur bei Defekt) ─────────────────────────
+    - name: Python-Minor-Version ermitteln
+      set_fact:
+        py_minor: "python3.{{ ansible_python_version.split('.')[1] }}"
+      when: not pip_ok_before and do_repair
+
+    - name: APT-Cache aktualisieren
+      apt:
+        update_cache: yes
+      when: not pip_ok_before and do_repair
+
+    - name: venv-/pip-Pakete neu installieren (ensurepip-Wheels wiederherstellen)
+      command: >-
+        apt-get install --reinstall -y
+        python3-venv {{ py_minor }}-venv python3-pip
+        python3-setuptools python3-wheel
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      register: repair_result
+      changed_when: repair_result.rc == 0
+      when: not pip_ok_before and do_repair
+
+    - name: ensurepip-Modul nach Reparatur prüfen
+      command: python3 -c "import ensurepip"
+      register: ensurepip_check
+      changed_when: false
+      ignore_errors: true
+      when: not pip_ok_before and do_repair
+
+    # ── 3. Erneute Prüfung ────────────────────────────────────
+    - name: Test-venv MIT pip erneut anlegen (Verifikation)
+      command: "python3 -m venv {{ venv_dir }}"
+      register: venv_after
+      changed_when: false
+      ignore_errors: true
+      when: not pip_ok_before and do_repair
+
+    - name: pip im reparierten venv prüfen
+      command: "{{ venv_dir }}/bin/pip --version"
+      register: pip_version
+      changed_when: false
+      ignore_errors: true
+      when: not pip_ok_before and do_repair and venv_after.rc == 0
+
+    - name: Test-venv nach Verifikation entfernen
+      file:
+        path: "{{ venv_dir }}"
+        state: absent
+
+    # ── Zusammenfassung ───────────────────────────────────────
+    - name: Ergebnis – pip war bereits funktionsfähig
+      debug:
+        msg: "{{ inventory_hostname }}: OK – venv/pip funktioniert (keine Reparatur nötig)."
+      when: pip_ok_before
+
+    - name: Ergebnis – Reparatur erfolgreich
+      debug:
+        msg: >-
+          {{ inventory_hostname }}: REPARIERT –
+          {{ pip_version.stdout | default('pip ok') | trim }}
+      when: not pip_ok_before and do_repair and venv_after.rc == 0
+
+    - name: Ergebnis – Reparatur fehlgeschlagen
+      debug:
+        msg: >-
+          {{ inventory_hostname }}: FEHLER – venv/pip weiterhin defekt.
+          ensurepip: {{ ensurepip_check.stderr | default('?') | trim }}
+          venv: {{ venv_after.stderr | default('') | trim }}
+      when: not pip_ok_before and do_repair and venv_after.rc != 0
+
+    - name: Ergebnis – Defekt erkannt, Reparatur deaktiviert
+      debug:
+        msg: "{{ inventory_hostname }}: DEFEKT – Reparatur per repair=false übersprungen."
+      when: not pip_ok_before and not do_repair
