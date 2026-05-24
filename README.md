@@ -54,6 +54,10 @@ Die Playbooks können in verschiedene Kategorien unterteilt werden, je nach ihre
 ### Netzwerkverwaltung
 - **check-wol.yml**: Überprüft und konfiguriert die Wake-on-LAN-Einstellungen für Netzwerkgeräte.
 - **wake-devices.sh**: Ein Skript, das Wake-on-LAN-Pakete an Geräte im Netzwerk sendet.
+- **check-proxy.yml**: Proxy-Diagnose auf Schülergeräten. Verteilt `files/proxy_test.py`,
+  führt es aus und sammelt Ergebnisse als CSV unter `results/`. Prüft u.a. ob „Proxy erzwingen"
+  aktiv ist und ob `kurswahl.lfs-ol.de` über den Squid-Proxy erreichbar ist.
+  Hintergrund: [iserv-proxy-kurswahl.md](../../../../../admin/iserv-proxy-kurswahl.md)
 
 ### Speicherplatzverwaltung
 - **disk-usage.yml**: Überwacht den Speicherplatz auf der `/var`-Partition und bereinigt bei Bedarf alte Dateien.
