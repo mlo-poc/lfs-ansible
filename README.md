@@ -50,6 +50,8 @@ Die Playbooks können in verschiedene Kategorien unterteilt werden, je nach ihre
 ### Paketverwaltung
 - **apt-install-filius.yml**: Installiert das Programm Filius und stellt sicher, dass es korrekt installiert ist.
 - **apt_installiere_programm.yml**: Installiert eine Liste von Programmen über den Paketmanager APT.
+- **check-pip-venv.yml**: Prüft, ob `python3 -m venv` pip korrekt bootstrappt, und repariert
+  bei defektem `ensurepip` die venv-/pip-Pakete (Reinstall). Mit `-e repair=false` nur Diagnose.
 
 ### Netzwerkverwaltung
 - **check-wol.yml**: Überprüft und konfiguriert die Wake-on-LAN-Einstellungen für Netzwerkgeräte.
